@@ -1,0 +1,18 @@
+import javax.swing.JFrame;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+class Main {
+    public static void main(String[] args) {
+        JFrame f = new JFrame("Sachin");
+        JButton b = new JButton("click me");
+        JLabel l = new JLabel("hiiii");
+        l.setBounds(180, 100, 150, 30);
+        b.setBounds(170, 150, 120, 40);
+        f.add(b);
+        f.add(l);
+        f.setSize(500, 400);
+        f.setLayout(null);
+        f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        f.setVisible(true);
+    }
+}
