@@ -1,4 +1,4 @@
-package FRAMES;
+
 import javax.swing.*;
 import java.awt.BorderLayout;
 public class ScreenshotFrame extends JFrame {
