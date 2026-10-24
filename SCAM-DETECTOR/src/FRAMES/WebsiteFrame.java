@@ -1,8 +1,11 @@
 package FRAMES;
 
 import javax.swing.*;
+import java.awt.BorderLayout;
 
 public class WebsiteFrame extends JFrame {
+
+    private JTextField urlField;
 
     public WebsiteFrame() {
 
@@ -16,19 +19,53 @@ public class WebsiteFrame extends JFrame {
 
         JLabel urlLabel = new JLabel("Enter Website URL:");
 
-        JTextField urlField = new JTextField();
+        urlField = new JTextField(25);
 
         JButton scanButton = new JButton("SCAN");
 
-        add(heading, "North");
-        add(urlLabel, "West");
-        add(urlField, "Center");
-        add(scanButton, "South");
+        JPanel inputPanel = new JPanel();
+        inputPanel.add(urlLabel);
+        inputPanel.add(urlField);
+
+        add(heading, BorderLayout.NORTH);
+        add(inputPanel, BorderLayout.CENTER);
+        add(scanButton, BorderLayout.SOUTH);
+
+        scanButton.addActionListener(e -> scanWebsite());
 
         setVisible(true);
     }
 
+    private void scanWebsite() {
+
+        String url = urlField.getText();
+
+        URLAnalyzer.AnalysisResult result =
+                URLAnalyzer.analyze(url);
+
+        StringBuilder message = new StringBuilder();
+
+        message.append("Classification: ")
+               .append(result.classification)
+               .append("\nRisk Score: ")
+               .append(result.riskScore)
+               .append("/100\n\nReasons:\n");
+
+        for (String reason : result.reasons) {
+            message.append("- ")
+                   .append(reason)
+                   .append("\n");
+        }
+
+        JOptionPane.showMessageDialog(
+                this,
+                message.toString(),
+                "Website Scan Result",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+    }
+
     public static void main(String[] args) {
-        new WebsiteFrame();
+        SwingUtilities.invokeLater(() -> new WebsiteFrame());
     }
 }
