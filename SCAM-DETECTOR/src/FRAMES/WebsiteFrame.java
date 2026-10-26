@@ -1,3 +1,4 @@
+
 package FRAMES;
 
 import javax.swing.*;
@@ -38,34 +39,69 @@ public class WebsiteFrame extends JFrame {
 
     private void scanWebsite() {
 
-        String url = urlField.getText();
+        String url = urlField.getText().trim();
 
-        URLAnalyzer.AnalysisResult result =
-                URLAnalyzer.analyze(url);
-
-        StringBuilder message = new StringBuilder();
-
-        message.append("Classification: ")
-               .append(result.classification)
-               .append("\nRisk Score: ")
-               .append(result.riskScore)
-               .append("/100\n\nReasons:\n");
-
-        for (String reason : result.reasons) {
-            message.append("- ")
-                   .append(reason)
-                   .append("\n");
+        // Check for empty input
+        if (url.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Please enter a website URL.",
+                    "Missing URL",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
         }
 
-        JOptionPane.showMessageDialog(
-                this,
-                message.toString(),
-                "Website Scan Result",
-                JOptionPane.INFORMATION_MESSAGE
-        );
+        try {
+            // Analyze the website
+            URLAnalyzer.AnalysisResult result =
+                    URLAnalyzer.analyze(url);
+
+            StringBuilder message = new StringBuilder();
+
+            message.append("Classification: ")
+                   .append(result.classification)
+                   .append("\nRisk Score: ")
+                   .append(result.riskScore)
+                   .append("/100\n\nReasons:\n");
+
+            for (String reason : result.reasons) {
+                message.append("- ")
+                       .append(reason)
+                       .append("\n");
+            }
+
+            // Save the scan to the database
+            DatabaseManager.saveScan(
+                    "Website",
+                    url,
+                    result.classification,
+                    result.riskScore
+            );
+
+            // Display the result
+            JOptionPane.showMessageDialog(
+                    this,
+                    message.toString(),
+                    "Website Scan Result",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "An error occurred while scanning the website:\n"
+                            + ex.getMessage(),
+                    "Scan Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+
+            ex.printStackTrace();
+        }
     }
 
     public static void main(String[] args) {
+        DatabaseManager.initializeDatabase();
         SwingUtilities.invokeLater(() -> new WebsiteFrame());
     }
 }
