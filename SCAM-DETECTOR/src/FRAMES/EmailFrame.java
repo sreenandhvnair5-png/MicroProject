@@ -4,11 +4,14 @@ package FRAMES;
 import javax.swing.*;
 import java.awt.BorderLayout;
 import java.awt.Font;
+import java.util.ArrayList;
 
 public class EmailFrame extends JFrame {
 
     private JTextField subjectField;
     private JTextArea bodyArea;
+    private JButton scanButton;
+    private JButton clearButton;
 
     public EmailFrame() {
 
@@ -35,8 +38,8 @@ public class EmailFrame extends JFrame {
         JPanel inputPanel = new JPanel(new BorderLayout(5, 10));
 
         JPanel subjectPanel = new JPanel(new BorderLayout(5, 5));
-        subjectPanel.add(new JLabel("Email Subject:"),
-                BorderLayout.NORTH);
+        subjectPanel.add(
+                new JLabel("Email Subject:"), BorderLayout.NORTH);
         subjectPanel.add(subjectField, BorderLayout.CENTER);
 
         JPanel bodyPanel = new JPanel(new BorderLayout(5, 5));
@@ -46,8 +49,8 @@ public class EmailFrame extends JFrame {
         inputPanel.add(subjectPanel, BorderLayout.NORTH);
         inputPanel.add(bodyPanel, BorderLayout.CENTER);
 
-        JButton scanButton = new JButton("SCAN EMAIL");
-        JButton clearButton = new JButton("CLEAR");
+        scanButton = new JButton("SCAN EMAIL");
+        clearButton = new JButton("CLEAR");
 
         JPanel buttonPanel = new JPanel();
         buttonPanel.add(scanButton);
@@ -82,60 +85,184 @@ public class EmailFrame extends JFrame {
             return;
         }
 
-        try {
-            // Analyze using your existing EmailAnalyzer
-            EmailAnalyzer.AnalysisResult result =
-                    EmailAnalyzer.analyze(subject, body);
+        scanButton.setEnabled(false);
+        clearButton.setEnabled(false);
+        scanButton.setText("SCANNING...");
 
-            StringBuilder output = new StringBuilder();
+        String emailContent =
+                "Subject: " + subject + "\n\nBody:\n" + body;
 
-            output.append("Classification: ")
-                  .append(result.classification)
-                  .append("\nRisk Score: ")
-                  .append(result.riskScore)
-                  .append("/100\n\nReasons:\n");
+        SwingWorker<ScanOutcome, Void> worker =
+                new SwingWorker<ScanOutcome, Void>() {
 
-            for (String reason : result.reasons) {
-                output.append("- ")
-                      .append(reason)
-                      .append("\n");
+            @Override
+            protected ScanOutcome doInBackground() {
+
+                // Run the existing email analyzer.
+                EmailAnalyzer.AnalysisResult rules =
+                        EmailAnalyzer.analyze(subject, body);
+
+                String classification = rules.classification;
+                int riskScore = rules.riskScore;
+
+                ArrayList<String> reasons =
+                        new ArrayList<>(rules.reasons);
+
+                String explanation = "";
+
+                // Try online analysis.
+                try {
+                    GroqAIService.AIResult ai =
+                            GroqAIService.analyze("email", emailContent);
+
+                    riskScore = Math.max(
+                            rules.riskScore,
+                            ai.riskScore);
+
+                    if (ai.reasons != null
+                            && !ai.reasons.trim().isEmpty()) {
+                        reasons.add(ai.reasons.trim());
+                    }
+
+                    if (ai.explanation != null) {
+                        explanation = ai.explanation.trim();
+                    }
+
+                    String aiClass = ai.classification == null
+                            ? ""
+                            : ai.classification.toUpperCase();
+
+                    String ruleClass =
+                            rules.classification.toUpperCase();
+
+                    boolean highRisk =
+                            riskScore >= 50
+                            || aiClass.contains("HIGH RISK")
+                            || ruleClass.contains("HIGH RISK");
+
+                    boolean suspicious =
+                            riskScore >= 20
+                            || aiClass.contains("SUSPICIOUS")
+                            || aiClass.contains("NEEDS REVIEW")
+                            || ruleClass.contains("SUSPICIOUS");
+
+                    if (highRisk) {
+                        classification = "HIGH RISK";
+                    } else if (suspicious) {
+                        classification = "SUSPICIOUS";
+                    } else {
+                        classification = "LOW RISK";
+                    }
+
+                } catch (Exception ex) {
+                    // If online analysis fails, use the existing result.
+                    classification = rules.classification;
+                    riskScore = rules.riskScore;
+                }
+
+                // Normalize the classification for display and history.
+                String upper = classification.toUpperCase();
+
+                if (upper.contains("HIGH RISK")) {
+                    classification = "HIGH RISK";
+                } else if (upper.contains("SUSPICIOUS")
+                        || upper.contains("NEEDS REVIEW")) {
+                    classification = "SUSPICIOUS";
+                } else if (upper.contains("LOW RISK")
+                        || upper.contains("NO MAJOR FLAGS")
+                        || upper.contains("NO OBVIOUS WARNING")) {
+                    classification = "LOW RISK";
+                }
+
+                return new ScanOutcome(
+                        classification,
+                        riskScore,
+                        reasons,
+                        explanation);
             }
 
-            output.append(
-                    "\nThis is a basic rule-based assessment, "
-                  + "not a guarantee that an email is safe or fraudulent.");
+            @Override
+            protected void done() {
 
-            // Save subject and body together so the history
-            // retains the complete email that was analyzed.
-            String emailContent =
-                    "Subject: " + subject + "\n\nBody:\n" + body;
+                scanButton.setEnabled(true);
+                clearButton.setEnabled(true);
+                scanButton.setText("SCAN EMAIL");
 
-            DatabaseManager.saveScan(
-                    "Email",
-                    emailContent,
-                    result.classification,
-                    result.riskScore
-            );
+                try {
+                    ScanOutcome result = get();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    output.toString(),
-                    "Email Scan Result",
-                    JOptionPane.INFORMATION_MESSAGE);
+                    // Save the full email and final result to SQLite.
+                    DatabaseManager.saveScan(
+                            "Email",
+                            emailContent,
+                            result.classification,
+                            result.riskScore);
 
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Email scan failed:\n" + ex.getMessage(),
-                    "Scan Error",
-                    JOptionPane.ERROR_MESSAGE);
+                    StringBuilder output = new StringBuilder();
 
-            ex.printStackTrace();
+                    output.append("Classification: ")
+                          .append(result.classification)
+                          .append("\nRisk Score: ")
+                          .append(result.riskScore)
+                          .append("/100\n\nReasons:\n");
+
+                    for (String reason : result.reasons) {
+                        output.append("- ")
+                              .append(reason)
+                              .append("\n");
+                    }
+
+                    if (!result.explanation.isEmpty()) {
+                        output.append("\nExplanation:\n")
+                              .append(result.explanation)
+                              .append("\n");
+                    }
+
+                    JOptionPane.showMessageDialog(
+                            EmailFrame.this,
+                            output.toString(),
+                            "Email Scan Result",
+                            JOptionPane.INFORMATION_MESSAGE);
+
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(
+                            EmailFrame.this,
+                            "Email scan failed:\n" + ex.getMessage(),
+                            "Scan Error",
+                            JOptionPane.ERROR_MESSAGE);
+
+                    ex.printStackTrace();
+                }
+            }
+        };
+
+        worker.execute();
+    }
+
+    private static class ScanOutcome {
+
+        String classification;
+        int riskScore;
+        ArrayList<String> reasons;
+        String explanation;
+
+        ScanOutcome(
+                String classification,
+                int riskScore,
+                ArrayList<String> reasons,
+                String explanation) {
+
+            this.classification = classification;
+            this.riskScore = riskScore;
+            this.reasons = reasons;
+            this.explanation = explanation;
         }
     }
 
     public static void main(String[] args) {
+
         DatabaseManager.initializeDatabase();
+
         SwingUtilities.invokeLater(() -> new EmailFrame());
     }
 }
