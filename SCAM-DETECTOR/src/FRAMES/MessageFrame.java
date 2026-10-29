@@ -3,6 +3,7 @@ package FRAMES;
 
 import javax.swing.*;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.util.ArrayList;
 
@@ -51,7 +52,6 @@ public class MessageFrame extends JFrame {
         buttonPanel.add(clearButton);
 
         scanButton.addActionListener(e -> scanMessage());
-
         clearButton.addActionListener(e -> messageArea.setText(""));
 
         mainPanel.add(heading, BorderLayout.NORTH);
@@ -85,35 +85,32 @@ public class MessageFrame extends JFrame {
             @Override
             protected ScanOutcome doInBackground() {
 
-                // Run the existing message analyzer first.
+                // 1. Run rule-based analysis.
                 MessageAnalyzer.AnalysisResult rules =
                         MessageAnalyzer.analyze(message);
 
                 String classification = rules.classification;
                 int riskScore = rules.riskScore;
 
-                ArrayList<String> reasons =
+                // Keep ONLY rule-based reasons in this list.
+                ArrayList<String> ruleReasons =
                         new ArrayList<>(rules.reasons);
 
+                // AI-generated explanation is stored separately.
                 String explanation = "";
 
-                // Try the online AI service.
+                // 2. Run AI analysis.
                 try {
                     GroqAIService.AIResult ai =
                             GroqAIService.analyze("message", message);
 
-                    // Keep the higher risk score.
+                    // Use the higher of the two risk scores.
                     riskScore = Math.max(
                             rules.riskScore,
                             ai.riskScore);
 
-                    // Add additional reasons without technical labels.
-                    if (ai.reasons != null
-                            && !ai.reasons.trim().isEmpty()) {
-
-                        reasons.add(ai.reasons.trim());
-                    }
-
+                    // Store only the AI explanation here.
+                    // Do NOT add ai.reasons to ruleReasons.
                     if (ai.explanation != null) {
                         explanation = ai.explanation.trim();
                     }
@@ -138,33 +135,37 @@ public class MessageFrame extends JFrame {
                                     .toUpperCase()
                                     .contains("SUSPICIOUS");
 
-                    // Determine the final classification.
+                    // 3. Determine the final classification.
                     if (riskScore >= 50
                             || aiHighRisk || rulesHighRisk) {
 
-                        classification = "HIGH RISK - POSSIBLE SCAM";
+                        classification =
+                                "HIGH RISK - POSSIBLE SCAM";
 
                     } else if (riskScore >= 20
                             || aiSuspicious || rulesSuspicious) {
 
-                        classification = "SUSPICIOUS - REVIEW CAREFULLY";
+                        classification =
+                                "SUSPICIOUS - REVIEW CAREFULLY";
 
                     } else {
-                        classification = "LOW RISK - NO MAJOR FLAGS FOUND";
+
+                        classification =
+                                "LOW RISK - NO MAJOR FLAGS FOUND";
                     }
 
                 } catch (Exception ex) {
 
-                    // If the service is unavailable, keep the
-                    // existing analyzer's result.
+                    // If AI fails, continue with rule-based results.
                     classification = rules.classification;
                     riskScore = rules.riskScore;
+                    explanation = "";
                 }
 
                 return new ScanOutcome(
                         classification,
                         riskScore,
-                        reasons,
+                        ruleReasons,
                         explanation);
             }
 
@@ -185,16 +186,19 @@ public class MessageFrame extends JFrame {
                             result.classification,
                             result.riskScore);
 
-                    // Build a clean result popup.
+                    // Build the result popup.
                     StringBuilder output = new StringBuilder();
 
                     output.append("Classification: ")
                           .append(formatClassification(
                                   result.classification))
-                          .append("\nRisk Score: ")
+                          .append("\n");
+
+                    output.append("Risk Score: ")
                           .append(result.riskScore)
                           .append("/100\n\n");
 
+                    // SECTION 1: Rule-based reasons only.
                     output.append("Reasons:\n");
 
                     for (String reason : result.reasons) {
@@ -203,15 +207,35 @@ public class MessageFrame extends JFrame {
                               .append("\n");
                     }
 
-                    if (!result.explanation.isEmpty()) {
+                    // SECTION 2: AI-generated explanation only.
+                    if (result.explanation != null
+                            && !result.explanation.isEmpty()) {
+
                         output.append("\nExplanation:\n")
                               .append(result.explanation)
                               .append("\n");
                     }
 
+                    // Use a wrapped text area for long results.
+                    JTextArea resultArea =
+                            new JTextArea(output.toString());
+
+                    resultArea.setEditable(false);
+                    resultArea.setLineWrap(true);
+                    resultArea.setWrapStyleWord(true);
+                    resultArea.setFont(
+                            new Font("SansSerif", Font.PLAIN, 16));
+                    resultArea.setCaretPosition(0);
+
+                    JScrollPane resultScrollPane =
+                            new JScrollPane(resultArea);
+
+                    resultScrollPane.setPreferredSize(
+                            new Dimension(760, 400));
+
                     JOptionPane.showMessageDialog(
                             MessageFrame.this,
-                            output.toString(),
+                            resultScrollPane,
                             "Message Scan Result",
                             JOptionPane.INFORMATION_MESSAGE);
 
@@ -232,7 +256,6 @@ public class MessageFrame extends JFrame {
         worker.execute();
     }
 
-    // Show a short classification in the popup.
     private String formatClassification(String classification) {
 
         if (classification == null) {

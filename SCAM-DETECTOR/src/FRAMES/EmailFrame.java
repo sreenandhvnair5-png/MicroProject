@@ -3,6 +3,7 @@ package FRAMES;
 
 import javax.swing.*;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.util.ArrayList;
 
@@ -110,7 +111,7 @@ public class EmailFrame extends JFrame {
 
                 String explanation = "";
 
-                // Try online analysis.
+                // Try online AI analysis.
                 try {
                     GroqAIService.AIResult ai =
                             GroqAIService.analyze("email", emailContent);
@@ -155,12 +156,12 @@ public class EmailFrame extends JFrame {
                     }
 
                 } catch (Exception ex) {
-                    // If online analysis fails, use the existing result.
+                    // If AI fails, keep the rule-based result.
                     classification = rules.classification;
                     riskScore = rules.riskScore;
                 }
 
-                // Normalize the classification for display and history.
+                // Normalize the classification.
                 String upper = classification.toUpperCase();
 
                 if (upper.contains("HIGH RISK")) {
@@ -191,7 +192,8 @@ public class EmailFrame extends JFrame {
                 try {
                     ScanOutcome result = get();
 
-                    // Save the full email and final result to SQLite.
+                    // Save the scan to SQLite.
+                    // Database failures must not stop result display.
                     DatabaseManager.saveScan(
                             "Email",
                             emailContent,
@@ -206,21 +208,43 @@ public class EmailFrame extends JFrame {
                           .append(result.riskScore)
                           .append("/100\n\nReasons:\n");
 
-                    for (String reason : result.reasons) {
-                        output.append("- ")
-                              .append(reason)
-                              .append("\n");
+                    if (result.reasons.isEmpty()) {
+                        output.append("- No specific reasons available.\n");
+                    } else {
+                        for (String reason : result.reasons) {
+                            output.append("- ")
+                                  .append(reason)
+                                  .append("\n");
+                        }
                     }
 
-                    if (!result.explanation.isEmpty()) {
+                    if (result.explanation != null
+                            && !result.explanation.isEmpty()) {
                         output.append("\nExplanation:\n")
                               .append(result.explanation)
                               .append("\n");
                     }
 
+                    // Fixed-size, scrollable result popup.
+                    JTextArea resultArea =
+                            new JTextArea(output.toString());
+
+                    resultArea.setEditable(false);
+                    resultArea.setLineWrap(true);
+                    resultArea.setWrapStyleWord(true);
+                    resultArea.setCaretPosition(0);
+                    resultArea.setFont(new Font(
+                            "SansSerif", Font.PLAIN, 14));
+
+                    JScrollPane resultScroll =
+                            new JScrollPane(resultArea);
+
+                    resultScroll.setPreferredSize(
+                            new Dimension(550, 300));
+
                     JOptionPane.showMessageDialog(
                             EmailFrame.this,
-                            output.toString(),
+                            resultScroll,
                             "Email Scan Result",
                             JOptionPane.INFORMATION_MESSAGE);
 
@@ -261,8 +285,9 @@ public class EmailFrame extends JFrame {
 
     public static void main(String[] args) {
 
-        DatabaseManager.initializeDatabase();
-
-        SwingUtilities.invokeLater(() -> new EmailFrame());
+        SwingUtilities.invokeLater(() -> {
+            DatabaseManager.initializeDatabase();
+            new EmailFrame();
+        });
     }
 }

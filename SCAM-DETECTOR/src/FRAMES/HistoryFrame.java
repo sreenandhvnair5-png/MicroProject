@@ -1,32 +1,18 @@
+
 package FRAMES;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 public class HistoryFrame extends JFrame {
 
     private JTable historyTable;
     private DefaultTableModel tableModel;
     private JButton refreshButton;
-
-    private static final String SUPABASE_URL =
-        "https://pwdgvyqeskwnumqeosaq.supabase.co/functions/v1/scam-analyze";
-
-    private static final String SUPABASE_KEY =
-        "sb_publishable_kwSsttjTjStIFD_yBqf0hQ_D4HhLGlK";
-
-    private static final HttpClient CLIENT = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(10))
-        .build();
 
     public HistoryFrame() {
 
@@ -88,90 +74,62 @@ public class HistoryFrame extends JFrame {
 
     private void loadHistory() {
 
-        if (!refreshButton.isEnabled()) {
-            return;
-        }
-
         refreshButton.setEnabled(false);
         tableModel.setRowCount(0);
 
-        new SwingWorker<JSONArray, Void>() {
+        new SwingWorker<Void, Object[]>() {
 
             @Override
-            protected JSONArray doInBackground() throws Exception {
+            protected Void doInBackground() throws Exception {
 
-                JSONObject requestBody = new JSONObject();
-                requestBody.put("action", "history");
+                String sql =
+                    "SELECT id, scan_type, scanned_content, "
+                    + "result, risk_score, scan_time "
+                    + "FROM scan_history ORDER BY id DESC";
 
-                HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(SUPABASE_URL))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + SUPABASE_KEY)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(
-                        requestBody.toString()))
-                    .build();
+                try (Connection con = DatabaseManager.getConnection();
+                     PreparedStatement stmt = con.prepareStatement(sql);
+                     ResultSet rs = stmt.executeQuery()) {
 
-                HttpResponse<String> response = CLIENT.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString()
-                );
+                    while (rs.next()) {
 
-                if (response.statusCode() < 200
-                        || response.statusCode() >= 300) {
-                    throw new Exception(
-                        "HTTP " + response.statusCode()
-                        + ": " + response.body()
-                    );
+                        String resultText = rs.getString("result");
+
+                        if (resultText == null) {
+                            resultText = "";
+                        }
+
+                        publish(new Object[] {
+                            rs.getLong("id"),
+                            rs.getString("scan_type"),
+                            rs.getString("scanned_content"),
+                            resultText,
+                            rs.getInt("risk_score"),
+                            rs.getString("scan_time")
+                        });
+                    }
                 }
 
-                JSONObject json = new JSONObject(response.body());
+                return null;
+            }
 
-                if (!json.optBoolean("success", false)) {
-                    throw new Exception(
-                        json.optString("error", "History request failed.")
-                    );
+            @Override
+            protected void process(java.util.List<Object[]> rows) {
+                for (Object[] row : rows) {
+                    tableModel.addRow(row);
                 }
-
-                return json.getJSONArray("scans");
             }
 
             @Override
             protected void done() {
 
                 try {
-                    JSONArray scans = get();
+                    get();
 
-                    for (int i = 0; i < scans.length(); i++) {
-
-                        JSONObject scan = scans.getJSONObject(i);
-                        String resultText = scan.optString("result", "");
-
-                        try {
-                            JSONObject resultJson = new JSONObject(resultText);
-                            resultText = resultJson.optString(
-                                "classification", resultText);
-                        } catch (Exception ignored) {
-                            // Keep the original result if it isn't JSON.
-                        }
-
-                        Object[] row = {
-                            scan.optLong("id"),
-                            scan.optString("scan_type"),
-                            scan.optString("scanned_content"),
-                            resultText,
-                            scan.optInt("risk_score"),
-                            scan.optString("scan_time")
-                        };
-
-                        tableModel.addRow(row);
-                    }
-
-                    if (scans.length() == 0) {
+                    if (tableModel.getRowCount() == 0) {
                         JOptionPane.showMessageDialog(
                             HistoryFrame.this,
-                            "No cloud scan history found.");
+                            "No local scan history found.");
                     }
 
                 } catch (Exception ex) {
@@ -181,7 +139,7 @@ public class HistoryFrame extends JFrame {
 
                     JOptionPane.showMessageDialog(
                         HistoryFrame.this,
-                        "Could not load cloud history.\n"
+                        "Could not load local history.\n"
                             + cause.getMessage(),
                         "History Error",
                         JOptionPane.ERROR_MESSAGE);

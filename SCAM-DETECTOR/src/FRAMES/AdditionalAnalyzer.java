@@ -148,7 +148,7 @@ public class AdditionalAnalyzer {
     private static String sendRequest(JSONArray messages)
             throws Exception {
 
-        String apiKey = System.getenv("GROQ_API_KEY");
+    	String apiKey = GroqConfig.API_KEY;
 
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new IllegalStateException(

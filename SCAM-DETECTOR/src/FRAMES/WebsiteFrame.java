@@ -3,6 +3,8 @@ package FRAMES;
 
 import javax.swing.*;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.Font;
 import java.util.ArrayList;
 
 public class WebsiteFrame extends JFrame {
@@ -21,10 +23,11 @@ public class WebsiteFrame extends JFrame {
                 "WEBSITE SCAM DETECTION",
                 SwingConstants.CENTER);
 
+        heading.setFont(new Font("SansSerif", Font.BOLD, 20));
+
         JLabel urlLabel = new JLabel("Enter Website URL:");
 
         urlField = new JTextField(25);
-
         scanButton = new JButton("SCAN");
 
         JPanel inputPanel = new JPanel();
@@ -62,31 +65,33 @@ public class WebsiteFrame extends JFrame {
             @Override
             protected ScanOutcome doInBackground() {
 
-                // Run the existing URL analyzer.
+                // 1. Run rule-based URL analysis.
                 URLAnalyzer.AnalysisResult rules =
                         URLAnalyzer.analyze(url);
 
                 String classification = rules.classification;
                 int riskScore = rules.riskScore;
 
-                ArrayList<String> reasons =
+                // Keep only rule-based reasons in this list.
+                ArrayList<String> ruleReasons =
                         new ArrayList<>(rules.reasons);
 
+                // Keep AI explanation separately.
                 String explanation = "";
 
-                // Try the online AI service.
+                // 2. Run AI analysis.
                 try {
                     GroqAIService.AIResult ai =
                             GroqAIService.analyze("website URL", url);
 
+                    // Combine scores, using the higher score.
                     riskScore = Math.max(
                             rules.riskScore,
                             ai.riskScore);
 
-                    if (ai.reasons != null
-                            && !ai.reasons.trim().isEmpty()) {
-                        reasons.add(ai.reasons.trim());
-                    }
+                    // IMPORTANT:
+                    // Do not add ai.reasons to ruleReasons.
+                    // Reasons must remain rule-based only.
 
                     if (ai.explanation != null) {
                         explanation = ai.explanation.trim();
@@ -96,19 +101,24 @@ public class WebsiteFrame extends JFrame {
                             ? ""
                             : ai.classification.toUpperCase();
 
+                    String ruleClass =
+                            rules.classification == null
+                                    ? ""
+                                    : rules.classification.toUpperCase();
+
                     boolean highRisk =
                             aiClass.contains("HIGH RISK")
-                            || rules.classification
-                                    .toUpperCase().contains("HIGH RISK")
-                            || rules.classification
-                                    .toUpperCase().contains("SUSPICIOUS")
+                            || ruleClass.contains("HIGH RISK")
+                            || ruleClass.contains("SUSPICIOUS")
                             || riskScore >= 50;
 
                     boolean suspicious =
                             aiClass.contains("SUSPICIOUS")
                             || aiClass.contains("NEEDS REVIEW")
+                            || ruleClass.contains("NEEDS REVIEW")
                             || riskScore >= 20;
 
+                    // 3. Determine final classification.
                     if (highRisk) {
                         classification = "HIGH RISK";
                     } else if (suspicious) {
@@ -118,31 +128,30 @@ public class WebsiteFrame extends JFrame {
                     }
 
                 } catch (Exception ex) {
-                    // Keep the existing analyzer's result if AI fails.
+
+                    // If AI fails, continue with rule-based analysis.
                     classification = rules.classification;
                     riskScore = rules.riskScore;
+                    explanation = "";
                 }
 
-                // Shorten the rule-based classification for display/history.
+                // Normalize the rule-based classification for display.
                 String upper = classification.toUpperCase();
 
-                if (upper.contains("HIGH RISK")
-                        || upper.contains("SUSPICIOUS")) {
-                    classification = "HIGH RISK".equals(upper)
-                            ? "HIGH RISK"
-                            : upper.contains("HIGH RISK")
-                                    ? "HIGH RISK" : "SUSPICIOUS";
-                } else if (upper.contains("NEEDS REVIEW")) {
+                if (upper.contains("HIGH RISK")) {
+                    classification = "HIGH RISK";
+                } else if (upper.contains("SUSPICIOUS")
+                        || upper.contains("NEEDS REVIEW")) {
                     classification = "SUSPICIOUS";
-                } else if (upper.contains("NO OBVIOUS WARNING SIGNS")
-                        || upper.contains("LOW RISK")) {
+                } else if (upper.contains("LOW RISK")
+                        || upper.contains("NO OBVIOUS WARNING SIGNS")) {
                     classification = "LOW RISK";
                 }
 
                 return new ScanOutcome(
                         classification,
                         riskScore,
-                        reasons,
+                        ruleReasons,
                         explanation);
             }
 
@@ -166,9 +175,14 @@ public class WebsiteFrame extends JFrame {
 
                     output.append("Classification: ")
                           .append(result.classification)
-                          .append("\nRisk Score: ")
+                          .append("\n");
+
+                    output.append("Risk Score: ")
                           .append(result.riskScore)
-                          .append("/100\n\nReasons:\n");
+                          .append("/100\n\n");
+
+                    // SECTION 1: Rule-based reasons only.
+                    output.append("Reasons:\n");
 
                     for (String reason : result.reasons) {
                         output.append("- ")
@@ -176,22 +190,44 @@ public class WebsiteFrame extends JFrame {
                               .append("\n");
                     }
 
-                    if (!result.explanation.isEmpty()) {
+                    // SECTION 2: AI-generated explanation only.
+                    if (result.explanation != null
+                            && !result.explanation.isEmpty()) {
+
                         output.append("\nExplanation:\n")
                               .append(result.explanation)
                               .append("\n");
                     }
 
+                    // Display long results in a scrollable popup.
+                    JTextArea resultArea =
+                            new JTextArea(output.toString());
+
+                    resultArea.setEditable(false);
+                    resultArea.setLineWrap(true);
+                    resultArea.setWrapStyleWord(true);
+                    resultArea.setFont(
+                            new Font("SansSerif", Font.PLAIN, 16));
+                    resultArea.setCaretPosition(0);
+
+                    JScrollPane resultScrollPane =
+                            new JScrollPane(resultArea);
+
+                    resultScrollPane.setPreferredSize(
+                            new Dimension(600, 320));
+
                     JOptionPane.showMessageDialog(
                             WebsiteFrame.this,
-                            output.toString(),
+                            resultScrollPane,
                             "Website Scan Result",
                             JOptionPane.INFORMATION_MESSAGE);
 
                 } catch (Exception ex) {
+
                     JOptionPane.showMessageDialog(
                             WebsiteFrame.this,
-                            "Website scan failed:\n" + ex.getMessage(),
+                            "Website scan failed:\n"
+                                    + ex.getMessage(),
                             "Scan Error",
                             JOptionPane.ERROR_MESSAGE);
 
@@ -225,8 +261,9 @@ public class WebsiteFrame extends JFrame {
 
     public static void main(String[] args) {
 
-        DatabaseManager.initializeDatabase();
-
-        SwingUtilities.invokeLater(() -> new WebsiteFrame());
+        SwingUtilities.invokeLater(() -> {
+            DatabaseManager.initializeDatabase();
+            new WebsiteFrame();
+        });
     }
 }

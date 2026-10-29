@@ -20,7 +20,7 @@ public class ScreenshotFrame extends JFrame {
 
     public ScreenshotFrame() {
 
-        setTitle("Screenshot Scam Detection");
+        setTitle("Image Scam Detection");
         setSize(700, 550);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -30,17 +30,17 @@ public class ScreenshotFrame extends JFrame {
                 BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel heading = new JLabel(
-                "SCREENSHOT SCAM DETECTION",
+                "IMAGE SCAM DETECTION",
                 SwingConstants.CENTER);
         heading.setFont(new Font("SansSerif", Font.BOLD, 22));
 
         imageLabel = new JLabel(
                 "No screenshot selected", SwingConstants.CENTER);
 
-        fileLabel = new JLabel("Choose a screenshot to begin.");
+        fileLabel = new JLabel("Choose a image to begin.");
 
-        uploadButton = new JButton("UPLOAD SCREENSHOT");
-        scanButton = new JButton("ANALYZE SCREENSHOT");
+        uploadButton = new JButton("UPLOAD IMAGE");
+        scanButton = new JButton("ANALYZE IMAGE");
         clearButton = new JButton("CLEAR");
 
         scanButton.setEnabled(false);
